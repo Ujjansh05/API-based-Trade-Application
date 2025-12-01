@@ -17,12 +17,34 @@ export const StrategyPanel = () => {
         { id: 'day_rise', title: 'Day Candle 5% Rise', description: 'Notify when Day Candle rises > 5%.', active: false, config: { ...DEFAULT_CONFIG } },
     ]);
 
+    const sendUpdate = async (id: string, active: boolean, config: any) => {
+        try {
+            await fetch('http://127.0.0.1:8000/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, active, config }),
+            });
+        } catch (err) {
+            console.error("Failed to update config", err);
+        }
+    };
+
     const toggleStrategy = (id: string, active: boolean) => {
-        setStrategies(s => s.map(strat => strat.id === id ? { ...strat, active } : strat));
+        setStrategies(s => {
+            const newStrategies = s.map(strat => strat.id === id ? { ...strat, active } : strat);
+            const strat = newStrategies.find(st => st.id === id);
+            if (strat) sendUpdate(id, active, strat.config);
+            return newStrategies;
+        });
     };
 
     const updateConfig = (id: string, config: any) => {
-        setStrategies(s => s.map(strat => strat.id === id ? { ...strat, config } : strat));
+        setStrategies(s => {
+            const newStrategies = s.map(strat => strat.id === id ? { ...strat, config } : strat);
+            const strat = newStrategies.find(st => st.id === id);
+            if (strat) sendUpdate(id, strat.active, config);
+            return newStrategies;
+        });
     };
 
     return (

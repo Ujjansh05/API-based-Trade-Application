@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import type { ColDef } from 'ag-grid-community';
 import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
@@ -15,15 +15,25 @@ interface TokenData {
     strategy: string;
 }
 
-const MOCK_DATA: TokenData[] = [
-    { symbol: 'NSE:INFY', ltp: 1450.5, change: 1.2, open: 1440, high: 1460, low: 1435, volume: 500000, signal: 'BUY', strategy: 'Turning Candle' },
-    { symbol: 'NFO:NIFTY14AUG25C24600', ltp: 120.0, change: -5.5, open: 125, high: 130, low: 110, volume: 150000, signal: 'SELL', strategy: 'Price Jump' },
-    { symbol: 'NSE:RELIANCE', ltp: 2400.0, change: 0.5, open: 2390, high: 2410, low: 2380, volume: 300000, signal: 'NONE', strategy: '-' },
-    { symbol: 'NSE:TATASTEEL', ltp: 110.0, change: 2.1, open: 108, high: 112, low: 107, volume: 1000000, signal: 'BUY', strategy: 'Day Low Double' },
-];
-
 export const TokenGrid = () => {
-    const [rowData] = useState<TokenData[]>(MOCK_DATA);
+    const [rowData, setRowData] = useState<TokenData[]>([]);
+
+    // Poll for data
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const res = await fetch('http://127.0.0.1:8000/api/tokens');
+                const data = await res.json();
+                setRowData(data);
+            } catch (err) {
+                console.error("Failed to fetch token data", err);
+            }
+        };
+
+        fetchData();
+        const interval = setInterval(fetchData, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     const columnDefs = useMemo<ColDef[]>(() => [
         { field: 'symbol', headerName: 'Token', sortable: true, filter: true, width: 180, pinned: 'left' },
