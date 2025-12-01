@@ -1,55 +1,90 @@
-# IB Live Trading Automation (Candles + Signals)
+# Antigravity Trader
 
-This adds a minimal, production-ready Python CLI using `ib_insync` to connect to Interactive Brokers (paper/live), fetch the last 12 candles for a chosen interval, compute two optional signals, and place orders automatically.
+Automated trading desktop application with mStock integration.
+
+## Project Structure
+
+```
+Zerodha10Candle/
+├── backend/                    # FastAPI backend
+│   ├── main.py                # Main API server
+│   ├── models.py              # Data models
+│   ├── mstock_client.py       # mStock API integration
+│   └── backend_runner.py      # Standalone backend entry point
+├── frontend/                   # React + Electron frontend
+│   ├── src/
+│   │   ├── components/        # UI components
+│   │   │   ├── WelcomeSetup.tsx      # First-run setup wizard
+│   │   │   ├── GlobalSettings.tsx    # Trading mode settings
+│   │   │   ├── TokenGrid.tsx         # Live data grid
+│   │   │   ├── StrategyPanel.tsx     # Strategy configuration
+│   │   │   └── StrategyCard.tsx      # Individual strategy cards
+│   │   ├── utils/
+│   │   │   └── lotSizeHelper.ts      # Index-specific lot sizes
+│   │   ├── App.tsx            # Main app component
+│   │   └── main.tsx           # Entry point
+│   ├── electron/              # Electron main process
+│   └── package.json           # Dependencies
+├── .env                       # mStock credentials (gitignored)
+├── .env.example               # Credential template
+├── build-all.bat              # Complete build script
+└── requirements.txt           # Python dependencies
 
 ## Features
-- Connects to IB via TWS/IB Gateway (`paper`: 7497, `live`: 7496)
-- Fetches last 12 bars for interval: 1,2,5,10,30,60 minutes
-- Displays candles: date, open, high, low, close, volume
-- Optional signals:
-  - Turning Candle Buy (Red→Green)
-  - Live Candle Price Jump (threshold %)
-- Places market orders when signals trigger
 
-## Install
-Use your Windows PowerShell:
+- ✅ First-run setup wizard (Microsoft Store-like)
+- ✅ Real-time stock data grid with sparkline charts
+- ✅ 3 trading modes: Notify Only, Auto Buy, Both
+- ✅ Index-specific lot sizes (NIFTY, BANKNIFTY, SENSEX, etc.)
+- ✅ Strategy configuration panel
+- ✅ Desktop notifications
+- ✅ Electron desktop app
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+## Development
+
+### Backend
+```bash
+cd backend
+pip install -r ../requirements.txt
+python main.py
 ```
 
-Ensure TWS or IB Gateway is running and API enabled (Enable DDE/API; read-only OFF if placing trades). For paper trading, use port `7497`; live usually `7496`.
-
-## Run
-Examples:
-
-```powershell
-# Paper trading, 10-minute candles, turning-candle buy enabled
-python main.py --symbols AAPL MSFT --interval 10 --turning-buy --paper
-
-# Add live price jump signal with 0.7% threshold
-python main.py --symbols AAPL --interval 10 --live-jump --jump-threshold 0.7 --paper
-
-# Live trading (be careful!)
-python main.py --symbols AAPL --interval 10 --turning-buy
+### Frontend
+```bash
+cd frontend
+npm install
+npm run electron:dev
 ```
 
-## Notes
-- Symbols: Use IB symbols (e.g., `AAPL`, `MSFT`, `NIFTY` requires correct contract type). This sample uses `Stock` with `SMART`/`USD` by default. For indices, futures, options, adapt `symbol_to_contract` in `main.py`.
-- Time interval mapping is limited to intraday minute bars. Day/Week/Month would require different `durationStr` and `barSizeSetting` (extend `BAR_SIZE_MAP`).
-- Strategy logic in `strategy.py` is a placeholder; port your exact Excel rules there (columns AR–AW / BU–BZ).
-- Orders: Uses market order for simplicity. For production, implement risk checks, position sizing, and `LimitOrder`.
+## Building for Distribution
 
-## Structure
-- `ib_client.py`: Connection + basic data/order helpers
-- `strategy.py`: Turning candle and price jump signals
-- `main.py`: CLI orchestrator
-- `requirements.txt`: Dependencies
+Run the automated build script:
+```bash
+build-all.bat
+```
 
-## Extend
-- Add CSV/Excel token list loader and loop over many contracts.
-- Persist logs and trades.
-- Add real-time subscription using `ib.reqRealTimeBars` if needed.
-- Add OCA/Bracket orders, stop-loss/take-profit.
+This creates: `frontend/dist/Antigravity Trader Setup.exe`
+
+## Client Installation
+
+1. Download the installer
+2. Run it
+3. Enter mStock credentials on first launch
+4. Start trading!
+
+## Environment Variables
+
+Create `.env` from `.env.example`:
+```env
+MSTOCK_API_KEY=your_api_key
+MSTOCK_USER_ID=your_user_id
+MSTOCK_PASSWORD=your_password
+```
+
+## Tech Stack
+
+- **Backend**: Python, FastAPI, mStock SDK
+- **Frontend**: React, TypeScript, TailwindCSS
+- **Desktop**: Electron
+- **Charts**: Recharts
+- **Packaging**: PyInstaller + electron-builder
