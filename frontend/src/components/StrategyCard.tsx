@@ -30,82 +30,82 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
     const [expanded, setExpanded] = useState(false);
 
     return (
-        <div className={cn("rounded-lg border transition-all", isActive ? "border-primary bg-primary/5" : "border-border bg-card")}>
-            <div className="p-4 flex items-start justify-between">
+        <div className={cn("glass-panel rounded-xl border-0 transition-all", isActive ? "bg-blue-500/10 shadow-lg shadow-blue-500/10" : "")}>
+            <div className="p-4 flex items-start justify-between gap-3">
                 <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                         <input
                             type="checkbox"
                             checked={isActive}
                             onChange={(e) => onToggle(e.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            className="h-4 w-4 rounded border-white/20 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900 cursor-pointer"
                         />
-                        <h3 className="font-medium text-sm">{title}</h3>
+                        <h3 className="font-medium text-sm text-gray-200">{title}</h3>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1 ml-6">{description}</p>
+                    <p className="text-xs text-gray-400 mt-2 ml-7 leading-relaxed">{description}</p>
                 </div>
                 <button
                     onClick={() => setExpanded(!expanded)}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-gray-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/5"
                 >
                     <Settings size={16} />
                 </button>
             </div>
 
             {expanded && (
-                <div className="px-4 pb-4 ml-6 space-y-3">
+                <div className="px-4 pb-4 ml-7 space-y-4 border-t border-white/5 pt-4">
                     <div className="flex items-center gap-2 text-xs">
                         <button
                             onClick={() => onConfigChange({ ...config, mode: 'AUTO' })}
-                            className={cn("flex items-center gap-1 px-2 py-1 rounded border", config.mode === 'AUTO' ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border")}
+                            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all", config.mode === 'AUTO' ? "bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:text-white")}
                         >
                             <Zap size={12} /> Auto Buy
                         </button>
                         <button
                             onClick={() => onConfigChange({ ...config, mode: 'NOTIFY' })}
-                            className={cn("flex items-center gap-1 px-2 py-1 rounded border", config.mode === 'NOTIFY' ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border")}
+                            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all", config.mode === 'NOTIFY' ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20" : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:text-white")}
                         >
                             <AlertCircle size={12} /> Notify Only
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
                         <div>
-                            <label className="block text-muted-foreground mb-1">Quantity</label>
+                            <label className="block text-gray-400 mb-1.5 font-medium">Quantity</label>
                             <input
                                 type="number"
                                 value={config.quantity}
                                 onChange={(e) => onConfigChange({ ...config, quantity: Number(e.target.value) })}
-                                className="w-full bg-background border border-border rounded px-2 py-1"
+                                className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         <div>
-                            <label className="block text-muted-foreground mb-1">Target %</label>
+                            <label className="block text-gray-400 mb-1.5 font-medium">Target %</label>
                             <input
                                 type="number"
                                 value={config.target}
                                 onChange={(e) => onConfigChange({ ...config, target: Number(e.target.value) })}
-                                className="w-full bg-background border border-border rounded px-2 py-1"
+                                className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         <div>
-                            <label className="block text-muted-foreground mb-1">Stop Loss</label>
+                            <label className="block text-gray-400 mb-1.5 font-medium">Stop Loss %</label>
                             <input
                                 type="number"
                                 value={config.stopLoss}
                                 onChange={(e) => onConfigChange({ ...config, stopLoss: Number(e.target.value) })}
-                                className="w-full bg-background border border-border rounded px-2 py-1"
+                                className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
-                        <div className="flex items-center pt-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
+                        <div className="flex items-end pb-2">
+                            <label className="flex items-center gap-2 cursor-pointer text-gray-300 hover:text-white transition-colors">
                                 <input
                                     type="checkbox"
                                     checked={config.trailingStop}
                                     onChange={(e) => onConfigChange({ ...config, trailingStop: e.target.checked })}
-                                    className="rounded border-gray-300"
+                                    className="h-4 w-4 rounded border-white/20 bg-gray-800 text-blue-600 cursor-pointer"
                                 />
-                                <span>Trailing SL</span>
+                                <span className="font-medium">Trailing SL</span>
                             </label>
                         </div>
                     </div>

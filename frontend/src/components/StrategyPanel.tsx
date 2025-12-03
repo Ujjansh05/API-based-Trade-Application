@@ -48,7 +48,7 @@ export const StrategyPanel = () => {
     };
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             {strategies.map(strat => (
                 <StrategyCard
                     key={strat.id}

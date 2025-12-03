@@ -50,6 +50,21 @@ export const GlobalSettings = () => {
         }
     };
 
+    const handleLogout = async () => {
+        if (confirm('Are you sure you want to logout? You will need to re-enter your mStock credentials.')) {
+            try {
+                await fetch('http://127.0.0.1:8000/api/credentials', {
+                    method: 'DELETE',
+                });
+                localStorage.removeItem('setupComplete');
+                window.location.reload();
+            } catch (err) {
+                console.error("Failed to logout", err);
+                alert('Logout failed. Please try again.');
+            }
+        }
+    };
+
     useEffect(() => {
         saveSettings();
     }, [settings]);
@@ -175,6 +190,21 @@ export const GlobalSettings = () => {
                             Saved
                         </span>
                     )}
+                </div>
+
+                {/* Logout Button */}
+                <div className="pt-4 border-t border-white/5">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 hover:border-red-500/30 rounded-xl font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" y1="12" x2="9" y2="12" />
+                        </svg>
+                        Logout & Re-enter Credentials
+                    </button>
                 </div>
             </div>
         </div>
