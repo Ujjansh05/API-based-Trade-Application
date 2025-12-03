@@ -6,6 +6,7 @@ import asyncio
 
 from .models import TokenData, StrategyUpdate, OrderRequest
 from .mstock_client import MStockClient
+from .credential_store import credential_store
 
 app = FastAPI(title="Antigravity Trader API")
 
@@ -69,22 +70,42 @@ async def update_config(update: StrategyUpdate):
 
 @app.post("/api/configure")
 async def configure_credentials(credentials: dict):
-    """Save mStock credentials from first-run setup"""
-    print(f"Configuring credentials for user: {credentials.get('userId')}")
-    
-    # In production, save to .env file or secure database
-    # For now, just acknowledge receipt
+    """Save mStock credentials securely to encrypted local database"""
     api_key = credentials.get('apiKey')
     user_id = credentials.get('userId')
     password = credentials.get('password')
     
     if api_key and user_id and password:
-        # TODO: Write to .env file or encrypted storage
-        # For demo, just store in memory
-        print(f"✓ Credentials configured successfully")
-        return {"status": "success", "message": "Configuration saved"}
+        try:
+            # Save to encrypted database
+            credential_store.save_mstock_credentials(api_key, user_id, password)
+            return {"status": "success", "message": "Credentials saved securely"}
+        except Exception as e:
+            print(f"Error saving credentials: {e}")
+            return {"status": "error", "message": "Failed to save credentials"}
     else:
         return {"status": "error", "message": "Missing required credentials"}
+
+@app.get("/api/credentials/check")
+async def check_credentials():
+    """Check if credentials are already saved"""
+    exists = credential_store.credentials_exist()
+    return {"exists": exists}
+
+@app.get("/api/credentials")
+async def get_credentials():
+    """Retrieve saved credentials (for backend use only)"""
+    creds = credential_store.get_mstock_credentials()
+    if creds:
+        return {"status": "success", "credentials": creds}
+    else:
+        return {"status": "error", "message": "No credentials found"}
+
+@app.delete("/api/credentials")
+async def delete_credentials():
+    """Delete saved credentials (logout/reset)"""
+    credential_store.delete_credentials()
+    return {"status": "success", "message": "Credentials deleted"}
 
 @app.post("/api/settings")
 async def update_settings(settings: dict):

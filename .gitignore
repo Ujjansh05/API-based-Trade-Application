@@ -7,10 +7,20 @@ venv/
 env/
 .env
 
+# Logs
+*.log
+mconnect.log
+
+# Build Artifacts
+build/
+dist/
+*.spec
+backend/build/
+backend/dist/
+backend/*.spec
 
 # Node
 node_modules/
-dist/
 dist-electron/
 release/
 

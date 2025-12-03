@@ -7,7 +7,7 @@ echo.
 REM Step 1: Build Backend
 echo [1/3] Building Backend Executable...
 cd backend
-python -m PyInstaller --onefile --name "AntigravityBackend" --add-data ".env;." backend_runner.py
+python -m PyInstaller --onefile --name "AntigravityBackend" backend_runner.py
 if errorlevel 1 (
     echo ERROR: Backend build failed!
     pause

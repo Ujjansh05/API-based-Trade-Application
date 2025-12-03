@@ -24,6 +24,6 @@ export function getLotSizeForSymbol(symbol: string, lotSizes: {
 }
 
 // Format lot size display
-export function formatLotSize(symbol: string, quantity: number): string {
+export function formatLotSize(quantity: number): string {
     return `${quantity} lot${quantity !== 1 ? 's' : ''}`;
 }

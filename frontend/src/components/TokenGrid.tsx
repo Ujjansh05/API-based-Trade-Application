@@ -81,43 +81,71 @@ export const TokenGrid = () => {
     };
 
     return (
-        <div className="h-full w-full flex flex-col bg-gray-900">
-            <div className="bg-green-600 text-white p-2 font-bold">
-                📊 Live Trading Data - {rowData.length} Symbols | Updates every second
+        <div className="h-full w-full flex flex-col">
+            <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-white/5">
+                <div className="flex items-center gap-2">
+                    <h2 className="font-semibold text-gray-200">Live Market Data</h2>
+                    <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 border border-blue-500/20">
+                        {rowData.length} Symbols
+                    </span>
+                </div>
+                <div className="text-xs text-gray-500 font-mono">
+                    Updates: 1s
+                </div>
             </div>
+
             <div className="flex-1 overflow-auto">
-                <table className="w-full text-white">
-                    <thead className="bg-gray-800 sticky top-0">
+                <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-400 uppercase bg-gray-900/50 sticky top-0 backdrop-blur-md z-10">
                         <tr>
-                            <th className="px-4 py-2 text-left">Symbol</th>
-                            <th className="px-4 py-2 text-center" style={{ width: '140px' }}>Price Trend</th>
-                            <th className="px-4 py-2 text-right">LTP</th>
-                            <th className="px-4 py-2 text-right">Change %</th>
-                            <th className="px-4 py-2 text-right">Volume</th>
-                            <th className="px-4 py-2 text-center">Signal</th>
-                            <th className="px-4 py-2 text-left">Strategy</th>
+                            <th className="px-6 py-3 font-medium">Symbol</th>
+                            <th className="px-6 py-3 font-medium w-[140px]">Trend (20s)</th>
+                            <th className="px-6 py-3 font-medium text-right">LTP</th>
+                            <th className="px-6 py-3 font-medium text-right">Change</th>
+                            <th className="px-6 py-3 font-medium text-right">Volume</th>
+                            <th className="px-6 py-3 font-medium text-center">Signal</th>
+                            <th className="px-6 py-3 font-medium">Strategy</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-white/5">
                         {rowData.map((row, idx) => (
-                            <tr key={idx} className="border-b border-gray-700 hover:bg-gray-800">
-                                <td className="px-4 py-3 font-mono font-bold">{row.symbol}</td>
-                                <td className="px-4 py-1" style={{ width: '140px' }}>
+                            <tr key={idx} className="hover:bg-white/5 transition-colors group">
+                                <td className="px-6 py-3 font-medium text-gray-200 group-hover:text-white transition-colors">
+                                    {row.symbol}
+                                </td>
+                                <td className="px-6 py-1 w-[140px]">
                                     <MiniChart symbol={row.symbol} />
                                 </td>
-                                <td className="px-4 py-3 text-right font-bold text-lg">₹{row.ltp.toFixed(2)}</td>
-                                <td className={`px-4 py-3 text-right font-semibold ${row.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    {row.change >= 0 ? '+' : ''}{row.change.toFixed(2)}%
+                                <td className="px-6 py-3 text-right font-mono font-medium text-gray-200">
+                                    ₹{row.ltp.toFixed(2)}
                                 </td>
-                                <td className="px-4 py-3 text-right text-gray-300">{row.volume.toLocaleString()}</td>
-                                <td className="px-4 py-3 text-center">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${row.signal === 'BUY' ? 'bg-green-600 text-white' :
-                                        row.signal === 'SELL' ? 'bg-red-600 text-white' : 'bg-gray-600 text-gray-300'
-                                        }`}>
-                                        {row.signal}
-                                    </span>
+                                <td className={`px-6 py-3 text-right font-medium ${row.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    <div className="flex items-center justify-end gap-1">
+                                        {row.change >= 0 ? '▲' : '▼'}
+                                        {Math.abs(row.change).toFixed(2)}%
+                                    </div>
                                 </td>
-                                <td className="px-4 py-3 text-gray-300">{row.strategy}</td>
+                                <td className="px-6 py-3 text-right text-gray-400 font-mono text-xs">
+                                    {row.volume.toLocaleString()}
+                                </td>
+                                <td className="px-6 py-3 text-center">
+                                    {row.signal !== 'NONE' && (
+                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider border ${row.signal === 'BUY'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                            : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                            }`}>
+                                            {row.signal}
+                                        </span>
+                                    )}
+                                    {row.signal === 'NONE' && <span className="text-gray-600">-</span>}
+                                </td>
+                                <td className="px-6 py-3 text-gray-400 text-xs">
+                                    {row.strategy !== '-' ? (
+                                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                            {row.strategy}
+                                        </span>
+                                    ) : '-'}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
