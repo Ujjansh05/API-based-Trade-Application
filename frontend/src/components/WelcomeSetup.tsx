@@ -10,22 +10,48 @@ export const WelcomeSetup = ({ onComplete }: { onComplete: () => void }) => {
     });
     const [isConfiguring, setIsConfiguring] = useState(false);
 
+    const waitForBackend = async (retries = 10, delayMs = 500) => {
+        for (let i = 0; i < retries; i++) {
+            try {
+                const res = await fetch('http://127.0.0.1:8000/');
+                if (res.ok) return true;
+            } catch {}
+            await new Promise((r) => setTimeout(r, delayMs));
+        }
+        return false;
+    };
+
     const saveCredentials = async () => {
         setIsConfiguring(true);
         try {
-            // Save credentials to backend
-            await fetch('http://127.0.0.1:8000/api/configure', {
+            // Ensure backend is up (Electron may take a moment to spawn it)
+            const ready = await waitForBackend();
+            if (!ready) throw new Error('backend-unavailable');
+
+            // Save credentials to backend with a couple of retries
+            const payload = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(credentials),
-            });
+            } as const;
+
+            let response: Response | null = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    response = await fetch('http://127.0.0.1:8000/api/configure', payload);
+                    if (response.ok) break;
+                } catch {}
+                await new Promise((r) => setTimeout(r, 400));
+            }
+
+            if (!response || !response.ok) throw new Error('save-failed');
 
             // Mark setup as complete in localStorage
             localStorage.setItem('setup_complete', 'true');
 
             setTimeout(() => {
                 onComplete();
-            }, 2000);
+            }, 1000);
         } catch (err) {
             alert('Failed to save configuration. Please check if backend is running.');
             setIsConfiguring(false);

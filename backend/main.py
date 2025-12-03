@@ -4,9 +4,10 @@ from typing import List
 import random
 import asyncio
 
-from .models import TokenData, StrategyUpdate, OrderRequest
-from .mstock_client import MStockClient
-from .credential_store import credential_store
+# Use absolute imports for PyInstaller compatibility
+from models import TokenData, StrategyUpdate, OrderRequest
+from mstock_client import MStockClient
+from credential_store import credential_store
 
 app = FastAPI(title="Antigravity Trader API")
 
