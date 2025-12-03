@@ -1,12 +1,45 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
     app.quit();
 }
 
+let backendProcess = null;
+
+function startBackend() {
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) {
+        console.log('In development mode, skipping backend spawn (assume running manually)');
+        return;
+    }
+
+    // Path to backend executable
+    // In production, it's in resources/backend/AntigravityBackend.exe
+    const backendPath = path.join(process.resourcesPath, 'backend', 'AntigravityBackend.exe');
+    console.log('Starting backend from:', backendPath);
+
+    backendProcess = spawn(backendPath, [], {
+        cwd: path.dirname(backendPath),
+        stdio: 'ignore', // Detach stdio to prevent hanging
+        windowsHide: true // Hide the console window
+    });
+
+    backendProcess.on('error', (err) => {
+        console.error('Failed to start backend:', err);
+    });
+
+    backendProcess.on('close', (code) => {
+        console.log(`Backend process exited with code ${code}`);
+    });
+}
+
 function createWindow() {
+    // Start backend
+    startBackend();
+
     // Create the browser window.
     const mainWindow = new BrowserWindow({
         width: 1200,
@@ -18,6 +51,7 @@ function createWindow() {
             contextIsolation: false, // For simpler communication for now
         },
         autoHideMenuBar: true,
+        icon: path.join(__dirname, '../public/icon.ico')
     });
 
     // Load the app.
@@ -46,5 +80,15 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', function () {
+    // Kill backend process
+    if (backendProcess) {
+        backendProcess.kill();
+    }
     if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+    if (backendProcess) {
+        backendProcess.kill();
+    }
 });
