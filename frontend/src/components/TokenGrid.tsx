@@ -11,42 +11,37 @@ interface TokenData {
     volume: number;
     signal: 'BUY' | 'SELL' | 'NONE';
     strategy: string;
+    prev_close?: number;
+    week52_high?: number;
+    week52_low?: number;
+    market_cap?: number;
 }
 
 // Track price history for sparklines (stores last 20 prices per symbol)
 const priceHistory: { [symbol: string]: number[] } = {};
 
-export const TokenGrid = () => {
+interface TokenGridProps {
+    tokens: TokenData[];
+}
+
+export const TokenGrid = ({ tokens }: TokenGridProps) => {
     const [rowData, setRowData] = useState<TokenData[]>([]);
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await fetch('http://127.0.0.1:8000/api/tokens');
-                const data = await res.json();
-
-                // Update price history for each symbol
-                data.forEach((token: TokenData) => {
-                    if (!priceHistory[token.symbol]) {
-                        priceHistory[token.symbol] = [];
-                    }
-                    priceHistory[token.symbol].push(token.ltp);
-                    // Keep only last 20 data points
-                    if (priceHistory[token.symbol].length > 20) {
-                        priceHistory[token.symbol].shift();
-                    }
-                });
-
-                setRowData(data);
-            } catch (err) {
-                console.error("Failed to fetch token data", err);
+        // Update price history for each symbol
+        tokens.forEach((token: TokenData) => {
+            if (!priceHistory[token.symbol]) {
+                priceHistory[token.symbol] = [];
             }
-        };
+            priceHistory[token.symbol].push(token.ltp);
+            // Keep only last 20 data points
+            if (priceHistory[token.symbol].length > 20) {
+                priceHistory[token.symbol].shift();
+            }
+        });
 
-        fetchData();
-        const interval = setInterval(fetchData, 1000);
-        return () => clearInterval(interval);
-    }, []);
+        setRowData(tokens);
+    }, [tokens]);
 
     // Mini sparkline chart component
     const MiniChart = ({ symbol }: { symbol: string }) => {
@@ -102,6 +97,10 @@ export const TokenGrid = () => {
                             <th className="px-6 py-3 font-medium w-[140px]">Trend (20s)</th>
                             <th className="px-6 py-3 font-medium text-right">LTP</th>
                             <th className="px-6 py-3 font-medium text-right">Change</th>
+                            <th className="px-6 py-3 font-medium text-right">Prev Close</th>
+                            <th className="px-6 py-3 font-medium text-right">52W H</th>
+                            <th className="px-6 py-3 font-medium text-right">52W L</th>
+                            <th className="px-6 py-3 font-medium text-right">Mkt Cap</th>
                             <th className="px-6 py-3 font-medium text-right">Volume</th>
                             <th className="px-6 py-3 font-medium text-center">Signal</th>
                             <th className="px-6 py-3 font-medium">Strategy</th>
@@ -124,6 +123,18 @@ export const TokenGrid = () => {
                                         {row.change >= 0 ? '▲' : '▼'}
                                         {Math.abs(row.change).toFixed(2)}%
                                     </div>
+                                </td>
+                                <td className="px-6 py-3 text-right text-gray-300 font-mono text-xs">
+                                    {row.prev_close != null ? `₹${row.prev_close.toFixed(2)}` : '-'}
+                                </td>
+                                <td className="px-6 py-3 text-right text-gray-300 font-mono text-xs">
+                                    {row.week52_high != null ? `₹${row.week52_high.toFixed(2)}` : '-'}
+                                </td>
+                                <td className="px-6 py-3 text-right text-gray-300 font-mono text-xs">
+                                    {row.week52_low != null ? `₹${row.week52_low.toFixed(2)}` : '-'}
+                                </td>
+                                <td className="px-6 py-3 text-right text-gray-300 font-mono text-xs">
+                                    {row.market_cap != null ? `${Math.round(row.market_cap/1e9)}B` : '-'}
                                 </td>
                                 <td className="px-6 py-3 text-right text-gray-400 font-mono text-xs">
                                     {row.volume.toLocaleString()}

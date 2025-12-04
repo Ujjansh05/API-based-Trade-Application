@@ -18,7 +18,11 @@ interface GlobalSettingsData {
     requireConfirmation: boolean;
 }
 
-export const GlobalSettings = () => {
+interface GlobalSettingsProps {
+    onModeChange?: (mode: TradingMode) => void;
+}
+
+export const GlobalSettings = ({ onModeChange }: GlobalSettingsProps) => {
     const [settings, setSettings] = useState<GlobalSettingsData>({
         mode: 'NOTIFY_ONLY',
         lotSizes: {
@@ -53,21 +57,25 @@ export const GlobalSettings = () => {
     const handleLogout = async () => {
         if (confirm('Are you sure you want to logout? You will need to re-enter your mStock credentials.')) {
             try {
-                await fetch('http://127.0.0.1:8000/api/credentials', {
-                    method: 'DELETE',
-                });
+                await fetch('http://127.0.0.1:8000/api/credentials', { method: 'DELETE' });
+            } catch (err) {
+                // Network failure or backend not reachable. Log and continue to reset UI state.
+                console.error('Logout request failed, proceeding to reset local state anyway.', err);
+            } finally {
+                // Always reset app setup state so user can re-enter credentials
                 localStorage.removeItem('setupComplete');
                 window.location.reload();
-            } catch (err) {
-                console.error("Failed to logout", err);
-                alert('Logout failed. Please try again.');
             }
         }
     };
 
     useEffect(() => {
         saveSettings();
-    }, [settings]);
+        // Notify parent of mode change
+        if (onModeChange) {
+            onModeChange(settings.mode);
+        }
+    }, [settings, onModeChange]);
 
     return (
         <div className="glass-panel rounded-xl p-5 mb-4">

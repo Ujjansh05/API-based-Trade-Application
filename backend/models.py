@@ -23,9 +23,28 @@ class TokenData(BaseModel):
     volume: int
     signal: str  # 'BUY' | 'SELL' | 'NONE'
     strategy: str
+    prev_close: Optional[float] = None
+    week52_high: Optional[float] = None
+    week52_low: Optional[float] = None
+    market_cap: Optional[float] = None
+
+class Candle(BaseModel):
+    ts: int  # epoch millis
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+class CandleResponse(BaseModel):
+    symbol: str
+    interval: str  # e.g., '1m','5m','15m'
+    count: int
+    candles: List[Candle]
 
 class OrderRequest(BaseModel):
     symbol: str
-    action: str  # 'BUY' | 'SELL'
     quantity: int
-    orderType: str = "MKT"
+    order_type: str  # 'BUY' | 'SELL'
+    strategy: str  # Which strategy triggered this
+    price: float = 0.0  # Current price for logging

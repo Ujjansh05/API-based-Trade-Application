@@ -3,12 +3,44 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useState, useEffect } from 'react';
 import { TokenGrid } from './components/TokenGrid';
 import { StrategyPanel } from './components/StrategyPanel';
+import { CandlesPanel } from './components/CandlesPanel';
 import { GlobalSettings } from './components/GlobalSettings';
 import { WelcomeSetup } from './components/WelcomeSetup';
+import { useNotificationService } from './hooks/useNotificationService';
+import { ThemeToggle } from './components/ThemeToggle';
 
 function App() {
   const [setupComplete, setSetupComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [tokens, setTokens] = useState([]);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>('');
+  const [tradingMode, setTradingMode] = useState('NOTIFY_ONLY');
+
+  // Fetch token data
+  useEffect(() => {
+    if (!setupComplete) return;
+
+    const fetchData = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/tokens');
+        const data = await res.json();
+        setTokens(data);
+        // Auto-select first symbol if none selected
+        if (!selectedSymbol && Array.isArray(data) && data.length > 0) {
+          setSelectedSymbol(data[0]?.symbol ?? '');
+        }
+      } catch (err) {
+        console.error("Failed to fetch token data", err);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 1000);
+    return () => clearInterval(interval);
+  }, [setupComplete]);
+
+  // Enable desktop notifications
+  useNotificationService({ tokens, tradingMode });
 
   useEffect(() => {
     // Check if setup was completed before
@@ -42,6 +74,7 @@ function App() {
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-medium text-emerald-400">Market Open</span>
@@ -53,15 +86,21 @@ function App() {
       <div className="flex-1 flex overflow-hidden p-4 gap-4">
         {/* Grid Area */}
         <main className="flex-1 overflow-hidden rounded-2xl glass-panel border-0 flex flex-col">
-          <TokenGrid />
+          <TokenGrid tokens={tokens} />
+          {selectedSymbol && (
+            <div className="p-4">
+              <CandlesPanel symbol={selectedSymbol} />
+            </div>
+          )}
         </main>
 
         {/* Right Sidebar */}
         <aside className="w-80 flex flex-col gap-4 overflow-y-auto pr-1">
-          <GlobalSettings />
+          <GlobalSettings onModeChange={setTradingMode} />
           <StrategyPanel />
         </aside>
       </div>
+      
     </div>
   );
 }

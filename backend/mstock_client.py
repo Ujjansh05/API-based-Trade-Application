@@ -75,3 +75,128 @@ class MStockClient:
         except Exception as e:
             print(f"Error fetching data: {e}")
             return {}
+
+    def _split_symbol(self, s: str):
+        try:
+            parts = s.split(":", 1)
+            if len(parts) == 2:
+                return parts[0], parts[1]
+            return "NSE", s
+        except Exception:
+            return "NSE", s
+
+    def get_data_smart(self, symbols):
+        """
+        Try multiple input formats to fetch LTP to avoid token-format mismatch.
+        Returns a tuple: (response, format_used)
+        format_used: one of 'exchange_symbol', 'exchange_token', 'plain_strings', 'error'
+        """
+        if not self.client:
+            return {}, "error"
+
+        # Variant A: [{'exchange': 'NSE', 'symbol': 'INFY'}]
+        ex_sym = []
+        for s in symbols:
+            ex, sym = self._split_symbol(s)
+            ex_sym.append({"exchange": ex, "symbol": sym})
+        try:
+            resp = self.client.get_ltp(ex_sym)
+            if resp:
+                print("DEBUG: Live fetch succeeded with exchange+symbol format")
+                return resp, "exchange_symbol"
+        except Exception as e:
+            print(f"DEBUG: exchange+symbol format failed: {e}")
+
+        # Variant B: [{'exchange': 'NSE', 'token': 'INFY'}] (some SDKs use 'token' key for symbol)
+        ex_tok = []
+        for s in symbols:
+            ex, sym = self._split_symbol(s)
+            ex_tok.append({"exchange": ex, "token": sym})
+        try:
+            resp = self.client.get_ltp(ex_tok)
+            if resp:
+                print("DEBUG: Live fetch succeeded with exchange+token format")
+                return resp, "exchange_token"
+        except Exception as e:
+            print(f"DEBUG: exchange+token format failed: {e}")
+
+        # Variant C: plain strings ["NSE:INFY", ...]
+        try:
+            resp = self.client.get_ltp(symbols)
+            if resp:
+                print("DEBUG: Live fetch succeeded with plain strings format")
+                return resp, "plain_strings"
+        except Exception as e:
+            print(f"DEBUG: plain strings format failed: {e}")
+
+        print("DEBUG: Live fetch returned empty for all formats; falling back")
+        return {}, "error"
+
+    def place_order(self, symbol, quantity, order_type='BUY', product='DELIVERY'):
+        """
+        Place an order through mStock API
+        
+        Args:
+            symbol: Trading symbol e.g., 'NSE:INFY' 
+            quantity: Number of shares/lots
+            order_type: 'BUY' or 'SELL'
+            product: 'DELIVERY' or 'INTRADAY'
+            
+        Returns:
+            dict: {'success': bool, 'order_id': str, 'message': str}
+        """
+        if not self.client or not self.is_connected:
+            return {'success': False, 'message': 'Not connected to mStock'}
+        
+        try:
+            # Parse symbol (e.g., 'NSE:INFY' -> exchange='NSE', symbol='INFY')
+            parts = symbol.split(':')
+            if len(parts) != 2:
+                return {'success': False, 'message': 'Invalid symbol format. Use EXCHANGE:SYMBOL'}
+            
+            exchange, stock_symbol = parts
+            
+            # Place market order
+            response = self.client.place_order(
+                exchange=exchange,
+                symbol=stock_symbol,
+                quantity=quantity,
+                order_type='MARKET',  # Always use market orders for simplicity
+                side=order_type,  # 'BUY' or 'SELL'
+                product=product,
+                price=None  # Market order, no price needed
+            )
+            
+            print(f"Order placed: {response}")
+            
+            # Extract order ID from response
+            order_id = response.get('order_id', 'UNKNOWN')
+            
+            return {
+                'success': True,
+                'order_id': order_id,
+                'message': f'{order_type} order placed for {quantity} {stock_symbol}'
+            }
+            
+        except Exception as e:
+            error_msg = f"Order placement failed: {str(e)}"
+            print(error_msg)
+            return {'success': False, 'message': error_msg}
+
+    def get_candles(self, symbol: str, interval: str, count: int):
+        """
+        Attempt to fetch historical candles via SDK if available.
+        Returns a list of dicts with keys: open, high, low, close, volume, timestamp
+        """
+        if not self.client:
+            return []
+        try:
+            # Many SDKs expose a historical API like get_historical or get_ohlc
+            # Since exact name is unknown, try common variants.
+            if hasattr(self.client, 'get_historical'):
+                return self.client.get_historical(symbol=symbol, interval=interval, count=count)
+            if hasattr(self.client, 'get_ohlc'):
+                return self.client.get_ohlc(symbol=symbol, interval=interval, count=count)
+        except Exception as e:
+            print(f"Error fetching candles: {e}")
+        return []

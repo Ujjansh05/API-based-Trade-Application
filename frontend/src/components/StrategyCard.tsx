@@ -57,13 +57,23 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
                     <div className="flex items-center gap-2 text-xs">
                         <button
                             onClick={() => onConfigChange({ ...config, mode: 'AUTO' })}
-                            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all", config.mode === 'AUTO' ? "bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:text-white")}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all duration-200",
+                                config.mode === 'AUTO'
+                                    ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-lg shadow-emerald-500/20"
+                                    : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:border-white/20 hover:text-white"
+                            )}
                         >
                             <Zap size={12} /> Auto Buy
                         </button>
                         <button
                             onClick={() => onConfigChange({ ...config, mode: 'NOTIFY' })}
-                            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all", config.mode === 'NOTIFY' ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-500/20" : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:text-white")}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all duration-200",
+                                config.mode === 'NOTIFY'
+                                    ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-lg shadow-blue-500/20"
+                                    : "bg-gray-800/50 text-gray-300 border-white/10 hover:bg-gray-800 hover:border-white/20 hover:text-white"
+                            )}
                         >
                             <AlertCircle size={12} /> Notify Only
                         </button>
@@ -74,8 +84,13 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
                             <label className="block text-gray-400 mb-1.5 font-medium">Quantity</label>
                             <input
                                 type="number"
+                                min="0"
+                                step="1"
                                 value={config.quantity}
-                                onChange={(e) => onConfigChange({ ...config, quantity: Number(e.target.value) })}
+                                onChange={(e) => {
+                                    const val = Math.max(0, parseInt(e.target.value) || 0);
+                                    onConfigChange({ ...config, quantity: val });
+                                }}
                                 className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
@@ -83,8 +98,13 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
                             <label className="block text-gray-400 mb-1.5 font-medium">Target %</label>
                             <input
                                 type="number"
+                                min="0"
+                                step="0.1"
                                 value={config.target}
-                                onChange={(e) => onConfigChange({ ...config, target: Number(e.target.value) })}
+                                onChange={(e) => {
+                                    const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                    onConfigChange({ ...config, target: val });
+                                }}
                                 className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
@@ -92,8 +112,13 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
                             <label className="block text-gray-400 mb-1.5 font-medium">Stop Loss %</label>
                             <input
                                 type="number"
+                                min="0"
+                                step="0.1"
                                 value={config.stopLoss}
-                                onChange={(e) => onConfigChange({ ...config, stopLoss: Number(e.target.value) })}
+                                onChange={(e) => {
+                                    const val = Math.max(0, parseFloat(e.target.value) || 0);
+                                    onConfigChange({ ...config, stopLoss: val });
+                                }}
                                 className="w-full bg-gray-900 text-white border border-white/10 rounded-lg px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                             />
                         </div>
