@@ -21,6 +21,9 @@ class MStockClient:
         self.api_key = os.getenv("MSTOCK_API_KEY")
         self.client_code = os.getenv("MSTOCK_USER_ID")
         self.password = os.getenv("MSTOCK_PASSWORD")
+        self.pin = os.getenv("MSTOCK_PIN")
+        self.totp = os.getenv("MSTOCK_TOTP")
+        self.vendor_key = os.getenv("MSTOCK_VENDOR_KEY")
         self.client = None
         self.is_connected = False
         
@@ -28,6 +31,9 @@ class MStockClient:
         print(f"DEBUG: API Key present: {bool(self.api_key)}")
         print(f"DEBUG: User ID present: {bool(self.client_code)}")
         print(f"DEBUG: Password present: {bool(self.password)}")
+        print(f"DEBUG: PIN present: {bool(self.pin)}")
+        print(f"DEBUG: TOTP present: {bool(self.totp)}")
+        print(f"DEBUG: Vendor Key present: {bool(self.vendor_key)}")
 
     def login(self):
         if not MConnect:
@@ -37,13 +43,29 @@ class MStockClient:
         try:
             # Initialize SDK
             self.client = MConnect(api_key=self.api_key)
+            # If SDK supports setting vendor/app key, try to attach it
+            try:
+                if self.vendor_key:
+                    if hasattr(self.client, 'set_vendor_key') and callable(getattr(self.client, 'set_vendor_key')):
+                        self.client.set_vendor_key(self.vendor_key)
+                        print("DEBUG: Vendor key set via set_vendor_key")
+                    elif hasattr(self.client, 'vendor_key'):
+                        setattr(self.client, 'vendor_key', self.vendor_key)
+                        print("DEBUG: Vendor key set via attribute")
+            except Exception as vk_err:
+                print(f"DEBUG: Unable to set vendor key: {vk_err}")
             
             # Perform Login if credentials exist
             if self.client_code and self.password:
-                response = self.client.login(
-                    user_id=self.client_code,
-                    password=self.password
-                )
+                # Build login kwargs with optional MFA
+                login_kwargs = {
+                    'user_id': self.client_code,
+                    'password': self.password
+                }
+                # Common SDKs accept 'totp' or 'otp' for MFA; avoid unsupported 'pin'
+                if self.totp:
+                    login_kwargs['totp'] = self.totp
+                response = self.client.login(**login_kwargs)
                 print(f"mStock Login Response: {response}")
                 self.is_connected = True
                 return True

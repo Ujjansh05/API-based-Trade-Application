@@ -24,22 +24,23 @@ app.add_middleware(
 # Initialize mStock Client with stored credentials
 mstock = None
 try:
-    # Try to get credentials from encrypted database
+    # Prefer encrypted credentials if present
     stored_creds = credential_store.get_mstock_credentials()
+    mstock = MStockClient()
     if stored_creds:
         print("Found stored credentials, attempting mStock login...")
-        mstock = MStockClient()
         # Override with stored credentials
         mstock.api_key = stored_creds['api_key']
         mstock.client_code = stored_creds['user_id']
         mstock.password = stored_creds['password']
-        login_success = mstock.login()
-        print(f"mStock Login Status: {login_success}")
-        if not login_success:
-            print("Login failed, falling back to mock data")
-            mstock = None
     else:
-        print("No stored credentials found, using mock data")
+        print("No stored credentials found. Trying .env variables for mStock login...")
+        # MStockClient already loaded .env; if present, login will use them
+    login_success = mstock.login()
+    print(f"mStock Login Status: {login_success}")
+    if not login_success:
+        print("Login failed or SDK missing, falling back to mock data")
+        mstock = None
 except Exception as e:
     print(f"Error initializing mStock client: {e}")
     mstock = None
@@ -400,8 +401,25 @@ async def get_credentials():
 @app.delete("/api/credentials")
 async def delete_credentials():
     """Delete saved credentials (logout/reset)"""
-    credential_store.delete_credentials()
-    return {"status": "success", "message": "Credentials deleted"}
+    global mstock
+    try:
+        # Attempt SDK logout if session exists
+        if mstock and getattr(mstock, 'is_connected', False):
+            try:
+                # Some SDKs expose logout/close/end_session methods; call if present
+                if hasattr(mstock, 'logout') and callable(getattr(mstock, 'logout')):
+                    mstock.logout()
+                elif hasattr(mstock, 'close') and callable(getattr(mstock, 'close')):
+                    mstock.close()
+            except Exception as sdk_err:
+                print(f"Warning: SDK logout failed: {sdk_err}")
+        credential_store.delete_credentials()
+        # Also drop any in-memory mStock client/session so backend switches to mock mode
+        mstock = None
+        return {"status": "success", "message": "Credentials deleted and session cleared"}
+    except Exception as e:
+        print(f"Error during logout: {e}")
+        return {"status": "error", "message": "Failed to delete credentials"}
 
 @app.post("/api/settings")
 async def update_settings(settings: dict):
