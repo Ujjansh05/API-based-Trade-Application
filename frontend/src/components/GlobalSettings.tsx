@@ -63,7 +63,8 @@ export const GlobalSettings = ({ onModeChange }: GlobalSettingsProps) => {
                 console.error('Logout request failed, proceeding to reset local state anyway.', err);
             } finally {
                 // Always reset app setup state so user can re-enter credentials
-                localStorage.removeItem('setupComplete');
+                // Key must match App.tsx ('setup_complete')
+                localStorage.removeItem('setup_complete');
                 window.location.reload();
             }
         }
