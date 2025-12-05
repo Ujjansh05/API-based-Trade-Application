@@ -3,16 +3,19 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useState, useEffect } from 'react';
 import { TokenGrid } from './components/TokenGrid';
 import { StrategyPanel } from './components/StrategyPanel';
-import { CandlesPanel } from './components/CandlesPanel';
+// Removed CandlesPanel from default UI to streamline feature set
+// import { CandlesPanel } from './components/CandlesPanel';
 import { GlobalSettings } from './components/GlobalSettings';
 import { WelcomeSetup } from './components/WelcomeSetup';
 import { useNotificationService } from './hooks/useNotificationService';
 import { ThemeToggle } from './components/ThemeToggle';
+import { AutoBuySelector } from './components/AutoBuySelector';
 
 function App() {
   const [setupComplete, setSetupComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [tokens, setTokens] = useState([]);
+  // Simplify: remove per-symbol candles panel for now
   const [selectedSymbol, setSelectedSymbol] = useState<string>('');
   const [tradingMode, setTradingMode] = useState('NOTIFY_ONLY');
 
@@ -87,16 +90,13 @@ function App() {
         {/* Grid Area */}
         <main className="flex-1 overflow-hidden rounded-2xl glass-panel border-0 flex flex-col">
           <TokenGrid tokens={tokens} />
-          {selectedSymbol && (
-            <div className="p-4">
-              <CandlesPanel symbol={selectedSymbol} />
-            </div>
-          )}
+          {/* Candles view removed to reduce UI complexity as requested */}
         </main>
 
         {/* Right Sidebar */}
         <aside className="w-80 flex flex-col gap-4 overflow-y-auto pr-1">
           <GlobalSettings onModeChange={setTradingMode} />
+          <AutoBuySelector />
           <StrategyPanel />
         </aside>
       </div>

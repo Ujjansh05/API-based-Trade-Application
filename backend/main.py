@@ -9,6 +9,13 @@ from models import TokenData, StrategyUpdate, OrderRequest, CandleResponse, Cand
 from mstock_client import MStockClient
 from credential_store import credential_store
 from order_tracker import order_tracker
+from auto_trade import (
+    NotifyAutoBuyEngine,
+    TokenAutoBuyConfig,
+    MarketTick,
+    MarginSnapshot,
+    ExecutionLog,
+)
 
 app = FastAPI(title="Antigravity Trader API")
 
@@ -37,13 +44,130 @@ try:
         print("No stored credentials found. Trying .env variables for mStock login...")
         # MStockClient already loaded .env; if present, login will use them
     login_success = mstock.login()
+    # Some SDKs return None/non-boolean on success; rely on client flag
     print(f"mStock Login Status: {login_success}")
-    if not login_success:
-        print("Login failed or SDK missing, falling back to mock data")
-        mstock = None
+    if hasattr(mstock, 'is_connected'):
+        print(f"DEBUG: mStock is_connected: {mstock.is_connected}")
+    # Do NOT discard the client solely on falsy login_success. Keep for diagnostics.
+    if not login_success and not (mstock and getattr(mstock, 'is_connected', False)):
+        print("Login failed or SDK missing; keeping client for diagnostics and mock mode")
 except Exception as e:
     print(f"Error initializing mStock client: {e}")
     mstock = None
+
+# -----------------------------
+# Auto-Buy engine wiring
+# -----------------------------
+auto_buy_engine = None
+auto_buy_selection: list[TokenAutoBuyConfig] = []
+auto_buy_log = ExecutionLog()
+notifications_buffer: list[dict] = []
+
+def _get_latest_ticks() -> list[MarketTick]:
+    """Convert current token snapshot into MarketTick list."""
+    ticks: list[MarketTick] = []
+    # Use existing live/mock paths to get token data
+    # Reuse TOKENS list and mstock connection status
+    try:
+        if mstock and mstock.is_connected:
+            resp, fmt = mstock.get_data_smart(TOKENS)
+            # Expect a dict mapping token->fields or list; normalize
+            now = asyncio.get_event_loop().time()
+            for s in TOKENS:
+                ex, sym = s.split(":", 1)
+                entry = None
+                if isinstance(resp, dict):
+                    entry = resp.get(s) or resp.get(sym)
+                elif isinstance(resp, list) and resp:
+                    # Attempt to find matching symbol in list entries
+                    for e in resp:
+                        if (e.get("symbol") == sym) or (e.get("token") == sym):
+                            entry = e
+                            break
+                if entry:
+                    ticks.append(MarketTick(
+                        token=s,
+                        ltp=float(entry.get("ltp", entry.get("price", 0.0)) or 0.0),
+                        open=float(entry.get("open", 0.0) or 0.0),
+                        high=float(entry.get("high", 0.0) or 0.0),
+                        low=float(entry.get("low", 0.0) or 0.0),
+                        volume=int(entry.get("volume", 0) or 0),
+                        timestamp=now,
+                    ))
+        else:
+            # Fallback: synthesize ticks from mock
+            now = asyncio.get_event_loop().time()
+            import random as _r
+            for s in TOKENS:
+                base = 100.0 + _r.random() * 50.0
+                ticks.append(MarketTick(
+                    token=s,
+                    ltp=round(base, 2),
+                    open=round(base - 1.0, 2),
+                    high=round(base + 2.0, 2),
+                    low=round(base - 2.0, 2),
+                    volume=_r.randint(1000, 500000),
+                    timestamp=now,
+                ))
+    except Exception as e:
+        print(f"Auto engine tick fetch error: {e}")
+    return ticks
+
+def _get_margin() -> MarginSnapshot:
+    # TODO: Integrate with real margin API when available
+    return MarginSnapshot(available=100000.0, utilized=0.0)
+
+def _send_notification(kind: str, payload: dict) -> None:
+    # Store in buffer for retrieval; never execute trades here
+    notifications_buffer.append({"kind": kind, "payload": payload})
+    # Cap buffer size
+    if len(notifications_buffer) > 500:
+        del notifications_buffer[:len(notifications_buffer) - 500]
+
+def _place_buy_order(token: str, qty: int) -> tuple[bool, str]:
+    # Safe order placement: use SDK if connected, else simulate
+    try:
+        if mstock and mstock.is_connected:
+            res = mstock.place_order(symbol=token, quantity=qty, order_type='BUY', product='DELIVERY')
+            return bool(res.get('success', False)), res.get('order_id', 'UNKNOWN') if isinstance(res, dict) else str(res)
+        # Simulate and also track in order history
+        oid = random.randint(10000, 99999)
+        order_tracker.record_order({
+            "order_id": oid,
+            "symbol": token,
+            "side": "BUY",
+            "quantity": qty,
+            "timestamp": asyncio.get_event_loop().time(),
+        })
+        return True, str(oid)
+    except Exception as e:
+        print(f"Auto-Buy order error: {e}")
+        return False, str(e)
+
+async def _auto_engine_loop():
+    global auto_buy_engine
+    while True:
+        try:
+            if auto_buy_engine:
+                log = auto_buy_engine.step()
+                auto_buy_log.entries = log.entries  # keep reference updated
+        except Exception as e:
+            print(f"Auto engine step error: {e}")
+        await asyncio.sleep(2)
+
+@app.on_event("startup")
+async def start_auto_engine():
+    global auto_buy_engine
+    # Initialize engine with empty selection; UI can update via endpoint
+    auto_buy_engine = NotifyAutoBuyEngine(
+        token_config=auto_buy_selection,
+        get_latest_ticks=_get_latest_ticks,
+        get_margin=_get_margin,
+        send_notification=_send_notification,
+        place_buy_order=_place_buy_order,
+        log=auto_buy_log,
+    )
+    asyncio.create_task(_auto_engine_loop())
 
 # Mock Data Store (fallback if mStock fails)
 TOKENS = [
@@ -74,10 +198,37 @@ def read_root():
         "mode": "live" if (mstock and mstock.is_connected) else "mock_data"
     }
 
+@app.get("/api/notifications")
+def get_notifications():
+    return {"count": len(notifications_buffer), "items": notifications_buffer[-50:]}
+
+@app.get("/api/autobuy/log")
+def get_autobuy_log():
+    return {"lines": auto_buy_log.entries[-100:]}
+
+@app.get("/api/autobuy/selection")
+def get_autobuy_selection():
+    return {"selection": [{"token": c.token, "autobuy": c.autobuy, "quantity": c.quantity} for c in auto_buy_selection]}
+
+@app.post("/api/autobuy/selection")
+def set_autobuy_selection(items: list[dict]):
+    """Update runtime token selection for auto-buy.
+    Expected payload: [{ token: str, autobuy: bool, quantity: int }, ...]
+    """
+    global auto_buy_selection, auto_buy_engine
+    try:
+        auto_buy_selection = [TokenAutoBuyConfig(token=i.get("token"), autobuy=bool(i.get("autobuy", False)), quantity=int(i.get("quantity", 1))) for i in items]
+        if auto_buy_engine:
+            auto_buy_engine.update_token_config(auto_buy_selection)
+        return {"status": "updated", "count": len(auto_buy_selection)}
+    except Exception as e:
+        print(f"Auto-buy selection update error: {e}")
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/tokens", response_model=List[TokenData])
 async def get_tokens():
     # Try live feed first if mStock is connected; otherwise fall back to mock
-    if mstock and mstock.is_connected:
+    if mstock and getattr(mstock, 'is_connected', False):
         try:
             live_response, fmt = mstock.get_data_smart(TOKENS)
             print(f"DEBUG: /api/tokens live format used: {fmt}")
@@ -138,9 +289,14 @@ async def get_tokens():
                 if data:
                     print("Returning Live Data")
                     return data
-            print("DEBUG: Live response empty or unparsable; falling back to mock")
+            print("DEBUG: Live response empty or unparsable; falling back logic engaged")
         except Exception as e:
             print(f"Live data fetch failed, falling back to mock: {e}")
+    
+    # Strict debug: avoid silent mock when diagnosing live issues
+    import os
+    if os.getenv("DEBUG_STRICT_LIVE") == "1":
+        raise HTTPException(status_code=503, detail="Live data unavailable; strict debug mode prevents mock fallback")
     
     # Fallback to Mock Data (Enhanced with 30+ stocks)
     print("Returning Mock Data")
@@ -430,16 +586,9 @@ async def update_settings(settings: dict):
 
 @app.post("/api/execute-trade")
 async def execute_trade(trade: dict):
-    print(f"Executing trade: {trade}")
-    # In production, call mStock API to place order
-    order_id = random.randint(10000, 99999)
-    return {
-        "status": "executed",
-        "orderId": order_id,
-        "symbol": trade.get("symbol"),
-        "quantity": trade.get("quantity"),
-        "price": trade.get("price")
-    }
+    # Duplicate route removed: this simplified handler shadowed the typed version above.
+    # Keep only the typed OrderRequest handler to prevent accidental override.
+    raise HTTPException(status_code=409, detail="Duplicate route disabled. Use typed /api/execute-trade endpoint.")
 
 @app.post("/api/orders")
 async def place_order(order: OrderRequest):

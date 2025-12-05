@@ -22,9 +22,11 @@ class MStockClient:
         self.client_code = os.getenv("MSTOCK_USER_ID")
         self.password = os.getenv("MSTOCK_PASSWORD")
         self.pin = os.getenv("MSTOCK_PIN")
-        self.totp = os.getenv("MSTOCK_TOTP")
+        # TOTP not required for this account; ignore any env
+        self.totp = None
         self.vendor_key = os.getenv("MSTOCK_VENDOR_KEY")
         self.client = None
+        # Connection flag is managed defensively after attempting login
         self.is_connected = False
         
         # Debug: Log what was loaded
@@ -32,12 +34,23 @@ class MStockClient:
         print(f"DEBUG: User ID present: {bool(self.client_code)}")
         print(f"DEBUG: Password present: {bool(self.password)}")
         print(f"DEBUG: PIN present: {bool(self.pin)}")
-        print(f"DEBUG: TOTP present: {bool(self.totp)}")
+        print(f"DEBUG: TOTP present: False (disabled)")
         print(f"DEBUG: Vendor Key present: {bool(self.vendor_key)}")
+        # Normalize when API and Vendor keys are the same or only one provided
+        if not self.api_key and self.vendor_key:
+            self.api_key = self.vendor_key
+            print("DEBUG: API key missing; using Vendor key as API key")
+        if not self.vendor_key and self.api_key:
+            self.vendor_key = self.api_key
+            print("DEBUG: Vendor key missing; using API key as Vendor key")
+        if self.api_key and self.vendor_key and self.api_key == self.vendor_key:
+            print("DEBUG: API and Vendor keys are identical; unified key will be used for auth")
 
     def login(self):
         if not MConnect:
             print("SDK not installed.")
+            # In absence of SDK, clearly mark disconnected
+            self.is_connected = False
             return False
 
         try:
@@ -52,8 +65,12 @@ class MStockClient:
                     elif hasattr(self.client, 'vendor_key'):
                         setattr(self.client, 'vendor_key', self.vendor_key)
                         print("DEBUG: Vendor key set via attribute")
+                # Mirror to app_key if SDK expects it
+                if hasattr(self.client, 'app_key') and not getattr(self.client, 'app_key'):
+                    setattr(self.client, 'app_key', self.api_key)
+                    print("DEBUG: App key set from API key")
             except Exception as vk_err:
-                print(f"DEBUG: Unable to set vendor key: {vk_err}")
+                print(f"DEBUG: Unable to set vendor/app key: {vk_err}")
             
             # Perform Login if credentials exist
             if self.client_code and self.password:
@@ -62,19 +79,25 @@ class MStockClient:
                     'user_id': self.client_code,
                     'password': self.password
                 }
-                # Common SDKs accept 'totp' or 'otp' for MFA; avoid unsupported 'pin'
-                if self.totp:
-                    login_kwargs['totp'] = self.totp
-                response = self.client.login(**login_kwargs)
-                print(f"mStock Login Response: {response}")
-                self.is_connected = True
-                return True
+                # Some SDKs return None or a non-boolean on success.
+                # Treat absence of exception and presence of client as success.
+                try:
+                    response = self.client.login(**login_kwargs)
+                    print(f"mStock Login Response: {response}")
+                    self.is_connected = True
+                    # Return True regardless of response truthiness on success path
+                    return True
+                except Exception as e:
+                    print(f"mStock Login raised exception: {e}")
+                    self.is_connected = False
+                    return False
             elif self.api_key:
                 print("Warning: Only API Key provided. Live data (LTP) will likely fail.")
                 self.is_connected = True # Connected to SDK, but not fully authenticated
                 return True
             else:
                 print("Missing API Key.")
+                self.is_connected = False
                 return False
 
         except Exception as e:
