@@ -1,8 +1,9 @@
+import os
+import asyncio
+import random
+from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
-import random
-import asyncio
 
 # Use absolute imports for PyInstaller compatibility
 from models import TokenData, StrategyUpdate, OrderRequest, CandleResponse, Candle
@@ -51,6 +52,11 @@ try:
     # Do NOT discard the client solely on falsy login_success. Keep for diagnostics.
     if not login_success and not (mstock and getattr(mstock, 'is_connected', False)):
         print("Login failed or SDK missing; keeping client for diagnostics and mock mode")
+    # Enable live mode only when API key is present and connection is up
+    if os.getenv("MSTOCK_API_KEY") and mstock and getattr(mstock, "is_connected", False):
+        live_enabled = True
+    else:
+        print("Live mStock disabled: missing API key or not connected; mock data will be used")
 except Exception as e:
     print(f"Error initializing mStock client: {e}")
     mstock = None
@@ -62,14 +68,13 @@ auto_buy_engine = None
 auto_buy_selection: list[TokenAutoBuyConfig] = []
 auto_buy_log = ExecutionLog()
 notifications_buffer: list[dict] = []
+live_enabled = False  # Gate live calls to avoid noisy auth failures when API key/IP not ready
 
 def _get_latest_ticks() -> list[MarketTick]:
     """Convert current token snapshot into MarketTick list."""
     ticks: list[MarketTick] = []
-    # Use existing live/mock paths to get token data
-    # Reuse TOKENS list and mstock connection status
     try:
-        if mstock and mstock.is_connected:
+        if live_enabled and mstock and mstock.is_connected:
             resp, fmt = mstock.get_data_smart(TOKENS)
             # Expect a dict mapping token->fields or list; normalize
             now = asyncio.get_event_loop().time()
@@ -95,20 +100,7 @@ def _get_latest_ticks() -> list[MarketTick]:
                         timestamp=now,
                     ))
         else:
-            # Fallback: synthesize ticks from mock
-            now = asyncio.get_event_loop().time()
-            import random as _r
-            for s in TOKENS:
-                base = 100.0 + _r.random() * 50.0
-                ticks.append(MarketTick(
-                    token=s,
-                    ltp=round(base, 2),
-                    open=round(base - 1.0, 2),
-                    high=round(base + 2.0, 2),
-                    low=round(base - 2.0, 2),
-                    volume=_r.randint(1000, 500000),
-                    timestamp=now,
-                ))
+            print("Live data disabled or not connected; returning empty tick list (no mock)")
     except Exception as e:
         print(f"Auto engine tick fetch error: {e}")
     return ticks
@@ -192,10 +184,10 @@ TOKENS = [
 @app.get("/")
 def read_root():
     return {
-        "status": "online", 
-        "service": "Antigravity Trader", 
+        "status": "online",
+        "service": "Antigravity Trader",
         "mstock_connected": mstock is not None and mstock.is_connected,
-        "mode": "live" if (mstock and mstock.is_connected) else "mock_data"
+        "mode": "live" if (mstock and mstock.is_connected and live_enabled) else "offline"
     }
 
 @app.get("/api/notifications")
@@ -227,152 +219,74 @@ def set_autobuy_selection(items: list[dict]):
 
 @app.get("/api/tokens", response_model=List[TokenData])
 async def get_tokens():
-    # Try live feed first if mStock is connected; otherwise fall back to mock
-    if mstock and getattr(mstock, 'is_connected', False):
-        try:
-            live_response, fmt = mstock.get_data_smart(TOKENS)
-            print(f"DEBUG: /api/tokens live format used: {fmt}")
-            if isinstance(live_response, dict) and live_response:
-                data: List[TokenData] = []
-                for s in TOKENS:
-                    parts = s.split(":")
-                    key_candidates = [s, parts[-1]]
-                    payload = {}
-                    for k in key_candidates:
-                        if k in live_response:
-                            payload = live_response.get(k, {})
+    if not (live_enabled and mstock and getattr(mstock, 'is_connected', False)):
+        raise HTTPException(status_code=503, detail="Live data unavailable (connection or API key missing)")
+
+    try:
+        live_response, fmt = mstock.get_data_smart(TOKENS)
+        print(f"DEBUG: /api/tokens live format used: {fmt}")
+        if isinstance(live_response, dict) and live_response:
+            data: List[TokenData] = []
+            for s in TOKENS:
+                parts = s.split(":")
+                key_candidates = [s, parts[-1]]
+                payload = {}
+                for k in key_candidates:
+                    if k in live_response:
+                        payload = live_response.get(k, {})
+                        break
+                # Some SDKs return list; handle that too
+                if not payload and isinstance(live_response, list):
+                    for item in live_response:
+                        if isinstance(item, dict) and (item.get("symbol") == parts[-1] or item.get("token") == parts[-1]):
+                            payload = item
                             break
-                    # Some SDKs return list; handle that too
-                    if not payload and isinstance(live_response, list):
-                        for item in live_response:
-                            if isinstance(item, dict) and (item.get("symbol") == parts[-1] or item.get("token") == parts[-1]):
-                                payload = item
-                                break
-                    ltp = None
-                    if isinstance(payload, dict):
-                        ltp = payload.get("ltp") or payload.get("price") or payload.get("LTP")
-                    if ltp is not None:
-                        prev_close_val = None
-                        # Prefer previous close from live payload when available
-                        for key in ("previousClose", "prevClose", "prev_close", "yesterdayClose"):
-                            if isinstance(payload, dict) and payload.get(key) is not None:
-                                try:
-                                    prev_close_val = float(payload.get(key))
-                                except Exception:
-                                    pass
-                                break
-                        change_pct = 0.0
-                        if prev_close_val is not None:
+                ltp = None
+                if isinstance(payload, dict):
+                    ltp = payload.get("ltp") or payload.get("price") or payload.get("LTP")
+                if ltp is not None:
+                    prev_close_val = None
+                    # Prefer previous close from live payload when available
+                    for key in ("previousClose", "prevClose", "prev_close", "yesterdayClose"):
+                        if isinstance(payload, dict) and payload.get(key) is not None:
                             try:
-                                change_pct = round(((float(ltp) - prev_close_val) / prev_close_val) * 100, 2)
+                                prev_close_val = float(payload.get(key))
                             except Exception:
-                                change_pct = 0.0
-                        else:
-                            # Fallback change based on open if previous close missing
-                            change_pct = round(((float(ltp) - float(payload.get("open", ltp))) / float(payload.get("open", ltp))) * 100, 2) if payload.get("open") else 0.0
+                                pass
+                            break
+                    change_pct = 0.0
+                    if prev_close_val is not None:
+                        try:
+                            change_pct = round(((float(ltp) - prev_close_val) / prev_close_val) * 100, 2)
+                        except Exception:
+                            change_pct = 0.0
+                    else:
+                        # Fallback change based on open if previous close missing
+                        change_pct = round(((float(ltp) - float(payload.get("open", ltp))) / float(payload.get("open", ltp))) * 100, 2) if payload.get("open") else 0.0
 
-                        data.append(TokenData(
-                            symbol=s,
-                            ltp=round(float(ltp), 2),
-                            change=change_pct,
-                            open=round(float(payload.get("open", ltp)), 2),
-                            high=round(float(payload.get("high", ltp)), 2),
-                            low=round(float(payload.get("low", ltp)), 2),
-                            volume=int(payload.get("volume", 0)),
-                            signal="NONE",
-                            strategy="-",
-                            prev_close=prev_close_val,
-                            week52_high=None,
-                            week52_low=None,
-                            market_cap=None,
-                        ))
-                if data:
-                    print("Returning Live Data")
-                    return data
-            print("DEBUG: Live response empty or unparsable; falling back logic engaged")
-        except Exception as e:
-            print(f"Live data fetch failed, falling back to mock: {e}")
-    
-    # Strict debug: avoid silent mock when diagnosing live issues
-    import os
-    if os.getenv("DEBUG_STRICT_LIVE") == "1":
-        raise HTTPException(status_code=503, detail="Live data unavailable; strict debug mode prevents mock fallback")
-    
-    # Fallback to Mock Data (Enhanced with 30+ stocks)
-    print("Returning Mock Data")
-    
-    # Realistic base prices for Indian stocks (approximate current market prices)
-    stock_prices = {
-        # IT Sector
-        "NSE:INFY": 1450, "NSE:TCS": 3800, "NSE:WIPRO": 256, "NSE:TECHM": 1200, "NSE:HCLTECH": 1350,
-        # Banking & Finance
-        "NSE:HDFCBANK": 1650, "NSE:ICICIBANK": 1100, "NSE:SBIN": 780, "NSE:KOTAKBANK": 1750, "NSE:AXISBANK": 1080,
-        # Energy & Power
-        "NSE:RELIANCE": 2850, "NSE:ONGC": 280, "NSE:POWERGRID": 310, "NSE:NTPC": 350,
-        # Metals & Mining
-        "NSE:TATASTEEL": 140, "NSE:HINDALCO": 620, "NSE:VEDL": 450, "NSE:JSWSTEEL": 920,
-        # FMCG & Consumer
-        "NSE:HINDUNILVR": 2400, "NSE:ITC": 450, "NSE:NESTLEIND": 2200, "NSE:BRITANNIA": 4800,
-        # Auto
-        "NSE:MARUTI": 12500, "NSE:TATAMOTORS": 780, "NSE:M&M": 2850, "NSE:BAJAJ-AUTO": 9500,
-        # Pharma
-        "NSE:SUNPHARMA": 1750, "NSE:DRREDDY": 1350, "NSE:CIPLA": 1450, "NSE:DIVISLAB": 5800,
-        # Index Options
-        "NFO:NIFTY14AUG25C24600": 150, "NFO:BANKNIFTY14AUG25P50000": 280
-    }
-    
-    data = []
-    for symbol in TOKENS:
-        # Get realistic base price
-        base_price = stock_prices.get(symbol, 500)
-        
-        # Add small random variation (-2% to +2%)
-        price_variation = random.uniform(-0.02, 0.02)
-        current_price = base_price * (1 + price_variation)
-        
-        # Calculate realistic OHLC data
-        day_open = base_price * random.uniform(0.98, 1.02)
-        day_high = max(current_price, day_open) * random.uniform(1.00, 1.01)
-        day_low = min(current_price, day_open) * random.uniform(0.99, 1.00)
-        
-        # Derive previous close and change percentage (prefer realistic previous close approx)
-        prev_close = base_price * random.uniform(0.98, 1.02)
-        price_change = ((current_price - prev_close) / prev_close) * 100
-        
-        # Check if price hit target for notification testing
-        signal = "NONE"
-        strategy = "-"
-        if price_change >= 3.0:
-            signal = "BUY"
-            strategy = "Price Jump"
-        elif price_change <= -3.0:
-            signal = "SELL"
-            strategy = "Turning Candle"
-        elif random.random() < 0.05:  # 5% chance for random signals
-            signal = random.choice(["BUY", "SELL"])
-            strategy = random.choice(["Price Jump", "Turning Candle", "Day Low Double"])
-        
-        # Mock metadata for 52-week stats and market cap (placeholder realistic ranges)
-        week52_high = base_price * random.uniform(1.15, 1.45)
-        week52_low = base_price * random.uniform(0.55, 0.85)
-        market_cap = random.uniform(1e11, 2e13)  # in INR
-
-        data.append(TokenData(
-            symbol=symbol,
-            ltp=round(current_price, 2),
-            change=round(price_change, 2),
-            open=round(day_open, 2),
-            high=round(day_high, 2),
-            low=round(day_low, 2),
-            volume=random.randint(100000, 10000000),
-            signal=signal,
-            strategy=strategy,
-            prev_close=round(prev_close, 2),
-            week52_high=round(week52_high, 2),
-            week52_low=round(week52_low, 2),
-            market_cap=round(market_cap, 2)
-        ))
-    return data
+                    data.append(TokenData(
+                        symbol=s,
+                        ltp=round(float(ltp), 2),
+                        change=change_pct,
+                        open=round(float(payload.get("open", ltp)), 2),
+                        high=round(float(payload.get("high", ltp)), 2),
+                        low=round(float(payload.get("low", ltp)), 2),
+                        volume=int(payload.get("volume", 0)),
+                        signal="NONE",
+                        strategy="-",
+                        prev_close=prev_close_val,
+                        week52_high=None,
+                        week52_low=None,
+                        market_cap=None,
+                    ))
+            if data:
+                print("Returning Live Data")
+                return data
+        raise HTTPException(status_code=502, detail="Live data response empty or unparsable")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Live data fetch failed: {e}")
 
 @app.get("/api/candles", response_model=CandleResponse)
 async def get_candles(symbol: str, interval: str = "1m", count: int = 12):
@@ -407,31 +321,7 @@ async def get_candles(symbol: str, interval: str = "1m", count: int = 12):
         print(f"Live candle fetch failed: {e}")
 
     if len(candles) != 12:
-        # Synthesize 12 candles from mock base
-        import time, random
-        base = 500.0
-        # If symbol in our mock price map, use that
-        base = {
-            "NSE:INFY": 1450, "NSE:TCS": 3800, "NSE:WIPRO": 256, "NSE:TECHM": 1200, "NSE:HCLTECH": 1350,
-        }.get(symbol, base)
-        now = int(time.time()*1000)
-        step_ms = {"1m": 60_000, "5m": 300_000, "15m": 900_000}[interval]
-        candles = []
-        price = base
-        for i in range(12):
-            # small random walk
-            drift = random.uniform(-0.01, 0.01)
-            o = price
-            h = o * (1 + max(drift, 0) * random.uniform(0.2, 1.0))
-            l = o * (1 + min(drift, 0) * random.uniform(0.2, 1.0))
-            c = o * (1 + drift)
-            v = random.randint(10000, 1000000)
-            candles.append(Candle(ts=now - (11-i)*step_ms, open=round(o,2), high=round(h,2), low=round(l,2), close=round(c,2), volume=v))
-            price = c
-
-    # Final validation
-    if len(candles) != 12:
-        raise HTTPException(status_code=500, detail="failed to produce exactly 12 candles")
+        raise HTTPException(status_code=503, detail="Live candles unavailable (connection or data incomplete)")
 
     return CandleResponse(symbol=symbol, interval=interval, count=12, candles=candles)
 
