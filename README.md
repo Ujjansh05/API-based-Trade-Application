@@ -1,4 +1,4 @@
-# Antigravity Trader
+# Smart Trader
 
 Automated trading desktop application with mStock integration.
 
